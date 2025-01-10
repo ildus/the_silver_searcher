@@ -4,7 +4,12 @@
 
 size_t alpha_skip_lookup[256];
 size_t *find_skip_lookup;
+
+#ifndef __VMS
 uint8_t h_table[H_SIZE] __attribute__((aligned(64)));
+#else
+uint8_t h_table[H_SIZE];
+#endif
 
 work_queue_t *work_queue = NULL;
 work_queue_t *work_queue_tail = NULL;
@@ -16,7 +21,7 @@ pthread_mutex_t work_queue_mtx = PTHREAD_MUTEX_INITIALIZER;
 symdir_t *symhash = NULL;
 
 /* Returns: -1 if skipped, otherwise # of matches */
-ssize_t search_buf(const char *buf, const size_t buf_len,
+ssize_t search_buf(print_context_t *ctx, char *buf, const size_t buf_len,
                    const char *dir_full_path) {
     int binary = -1; /* 1 = yes, 0 = no, -1 = don't know */
     size_t buf_offset = 0;
@@ -114,19 +119,24 @@ ssize_t search_buf(const char *buf, const size_t buf_len,
     } else {
         int offset_vector[3];
         if (opts.multiline) {
+            regmatch_t pmatch[1];
+
             while (buf_offset < buf_len &&
-                   (pcre_exec(opts.re, opts.re_extra, buf, buf_len, buf_offset, 0, offset_vector, 3)) >= 0) {
-                log_debug("Regex match found. File %s, offset %i bytes.", dir_full_path, offset_vector[0]);
-                buf_offset = offset_vector[1];
-                if (offset_vector[0] == offset_vector[1]) {
+                   (tre_regnexec(opts.re, buf + buf_offset, buf_len - buf_offset, 1, pmatch, 0)) == REG_OK) {
+                size_t start = buf_offset + pmatch[0].rm_so;
+                size_t end = buf_offset + pmatch[0].rm_eo;
+
+                log_debug("Regex match found. File %s, offset %i bytes.", dir_full_path, start);
+                buf_offset = end;
+                if (start == end) {
                     ++buf_offset;
                     log_debug("Regex match is of length zero. Advancing offset one byte.");
                 }
 
                 realloc_matches(&matches, &matches_size, matches_len + matches_spare);
 
-                matches[matches_len].start = offset_vector[0];
-                matches[matches_len].end = offset_vector[1];
+                matches[matches_len].start = start;
+                matches[matches_len].end = end;
                 matches_len++;
 
                 if (opts.max_matches_per_file > 0 && matches_len >= opts.max_matches_per_file) {
@@ -136,29 +146,34 @@ ssize_t search_buf(const char *buf, const size_t buf_len,
             }
         } else {
             while (buf_offset < buf_len) {
-                const char *line;
+                regmatch_t pmatch[1];
+                char *line;
                 size_t line_len = buf_getline(&line, buf, buf_len, buf_offset);
                 if (!line) {
                     break;
                 }
                 size_t line_offset = 0;
                 while (line_offset < line_len) {
-                    int rv = pcre_exec(opts.re, opts.re_extra, line, line_len, line_offset, 0, offset_vector, 3);
-                    if (rv < 0) {
+                    int rv = tre_regnexec(opts.re, line + line_offset, line_len - line_offset, 1, pmatch, 0);
+                    if (rv != 0) {
                         break;
                     }
+
+                    size_t start = line_offset + pmatch[0].rm_so;
+                    size_t end = line_offset + pmatch[0].rm_eo;
+
                     size_t line_to_buf = buf_offset + line_offset;
-                    log_debug("Regex match found. File %s, offset %i bytes.", dir_full_path, offset_vector[0]);
-                    line_offset = offset_vector[1];
-                    if (offset_vector[0] == offset_vector[1]) {
+                    log_debug("Regex match found. File %s, offset %i bytes.", dir_full_path, start);
+                    line_offset = end;
+                    if (start == end) {
                         ++line_offset;
                         log_debug("Regex match is of length zero. Advancing offset one byte.");
                     }
 
                     realloc_matches(&matches, &matches_size, matches_len + matches_spare);
 
-                    matches[matches_len].start = offset_vector[0] + line_to_buf;
-                    matches[matches_len].end = offset_vector[1] + line_to_buf;
+                    matches[matches_len].start = start + line_to_buf;
+                    matches[matches_len].end = end + line_to_buf;
                     matches_len++;
 
                     if (opts.max_matches_per_file > 0 && matches_len >= opts.max_matches_per_file) {
@@ -202,7 +217,7 @@ multiline_done:
         } else if (binary) {
             print_binary_file_matches(dir_full_path);
         } else {
-            print_file_matches(dir_full_path, buf, buf_len, matches, matches_len);
+            print_file_matches(ctx, dir_full_path, buf, buf_len, matches, matches_len);
         }
         pthread_mutex_unlock(&print_mtx);
         opts.match_found = 1;
@@ -213,7 +228,7 @@ multiline_done:
     }
 
     if (matches_len == 0 && opts.search_stream) {
-        print_context_append(buf, buf_len - 1);
+        print_context_append(ctx, buf, buf_len - 1);
     }
 
     if (matches_size > 0) {
@@ -233,12 +248,12 @@ ssize_t search_stream(FILE *stream, const char *path) {
     size_t line_cap = 0;
     size_t i;
 
-    print_init_context();
+    print_context_t *ctx = print_init_context();
 
     for (i = 1; (line_len = getline(&line, &line_cap, stream)) > 0; i++) {
         ssize_t result;
         opts.stream_line_num = i;
-        result = search_buf(line, line_len, path);
+        result = search_buf(ctx, line, line_len, path);
         if (result > 0) {
             if (matches_count == -1) {
                 matches_count = 0;
@@ -250,11 +265,11 @@ ssize_t search_stream(FILE *stream, const char *path) {
         if (line[line_len - 1] == '\n') {
             line_len--;
         }
-        print_trailing_context(path, line, line_len);
+        print_trailing_context(ctx, path, line, line_len);
     }
 
     free(line);
-    print_cleanup_context();
+    print_cleanup_context(ctx);
     return matches_count;
 }
 
@@ -266,6 +281,7 @@ void search_file(const char *file_full_path) {
     int rv = 0;
     int matches_count = -1;
     FILE *fp = NULL;
+    print_context_t *ctx = NULL;
 
     rv = stat(file_full_path, &statbuf);
     if (rv != 0) {
@@ -273,10 +289,12 @@ void search_file(const char *file_full_path) {
         goto cleanup;
     }
 
+#ifdef __unix__
     if (opts.stdout_inode != 0 && opts.stdout_inode == statbuf.st_ino) {
         log_debug("Skipping %s: stdout is redirected to it", file_full_path);
         goto cleanup;
     }
+#endif
 
     // handling only regular files and FIFOs
     if (!S_ISREG(statbuf.st_mode) && !S_ISFIFO(statbuf.st_mode)) {
@@ -298,10 +316,12 @@ void search_file(const char *file_full_path) {
         goto cleanup;
     }
 
+#ifdef __unix__
     if (opts.stdout_inode != 0 && opts.stdout_inode == statbuf.st_ino) {
         log_debug("Skipping %s: stdout is redirected to it", file_full_path);
         goto cleanup;
     }
+#endif
 
     // handling only regular files and FIFOs
     if (!S_ISREG(statbuf.st_mode) && !S_ISFIFO(statbuf.st_mode)) {
@@ -309,7 +329,7 @@ void search_file(const char *file_full_path) {
         goto cleanup;
     }
 
-    print_init_context();
+    ctx = print_init_context();
 
     if (statbuf.st_mode & S_IFIFO) {
         log_debug("%s is a named pipe. stream searching", file_full_path);
@@ -323,15 +343,10 @@ void search_file(const char *file_full_path) {
 
     if (f_len == 0) {
         if (opts.query[0] == '.' && opts.query_len == 1 && !opts.literal && opts.search_all_files) {
-            matches_count = search_buf(buf, f_len, file_full_path);
+            matches_count = search_buf(ctx, buf, f_len, file_full_path);
         } else {
             log_debug("Skipping %s: file is empty.", file_full_path);
         }
-        goto cleanup;
-    }
-
-    if (!opts.literal && f_len > INT_MAX) {
-        log_err("Skipping %s: pcre_exec() can't handle files larger than %i bytes.", file_full_path, INT_MAX);
         goto cleanup;
     }
 
@@ -404,14 +419,14 @@ void search_file(const char *file_full_path) {
                 log_err("Cannot decompress zipped file %s", file_full_path);
                 goto cleanup;
             }
-            matches_count = search_buf(_buf, _buf_len, file_full_path);
+            matches_count = search_buf(ctx, _buf, _buf_len, file_full_path);
             free(_buf);
 #endif
             goto cleanup;
         }
     }
 
-    matches_count = search_buf(buf, f_len, file_full_path);
+    matches_count = search_buf(ctx, buf, f_len, file_full_path);
 
 cleanup:
 
@@ -422,7 +437,8 @@ cleanup:
         opts.match_found = 1;
     }
 
-    print_cleanup_context();
+    print_cleanup_context(ctx);
+
     if (buf != NULL) {
 #ifdef _WIN32
         UnmapViewOfFile(buf);
@@ -467,10 +483,12 @@ void *search_file_worker(void *i) {
         free(queue_item->path);
         free(queue_item);
     }
+
+    return NULL;
 }
 
 static int check_symloop_enter(const char *path, dirkey_t *outkey) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__VMS)
     return SYMLOOP_OK;
 #else
     struct stat buf;
@@ -503,7 +521,7 @@ static int check_symloop_enter(const char *path, dirkey_t *outkey) {
 }
 
 static int check_symloop_leave(dirkey_t *dirkey) {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__VMS)
     return SYMLOOP_OK;
 #else
     symdir_t *item_found = NULL;
@@ -604,7 +622,7 @@ void search_dir(ignores *ig, const char *base_path, const char *path, const int 
         queue_item = NULL;
         dir = dir_list[i];
         ag_asprintf(&dir_full_path, "%s/%s", path, dir->d_name);
-#ifndef _WIN32
+#if !(defined(_WIN32) || defined(__VMS))
         if (opts.one_dev) {
             struct stat s;
             if (lstat(dir_full_path, &s) != 0) {
@@ -626,9 +644,10 @@ void search_dir(ignores *ig, const char *base_path, const char *path, const int 
 
         if (!is_directory(path, dir)) {
             if (opts.file_search_regex) {
-                rc = pcre_exec(opts.file_search_regex, NULL, dir_full_path, strlen(dir_full_path),
-                               0, 0, offset_vector, 3);
-                if (rc < 0) { /* no match */
+                regmatch_t pmatch[1];
+                rc = tre_regnexec(opts.file_search_regex, dir_full_path, strlen(dir_full_path),
+                                  1, pmatch, 0);
+                if (rc > 0) { /* no match */
                     log_debug("Skipping %s due to file_search_regex.", dir_full_path);
                     goto cleanup;
                 } else if (opts.match_files) {

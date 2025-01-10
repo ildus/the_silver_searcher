@@ -5,7 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <pcre.h>
+#include <tre.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,7 +33,12 @@
 
 extern size_t alpha_skip_lookup[256];
 extern size_t *find_skip_lookup;
+
+#ifndef __VMS
 extern uint8_t h_table[H_SIZE] __attribute__((aligned(64)));
+#else
+extern uint8_t h_table[H_SIZE];
+#endif
 
 struct work_queue_t {
     char *path;
@@ -66,7 +71,7 @@ typedef struct {
 
 extern symdir_t *symhash;
 
-ssize_t search_buf(const char *buf, const size_t buf_len,
+ssize_t search_buf(print_context_t *ctx, char *buf, const size_t buf_len,
                    const char *dir_full_path);
 ssize_t search_stream(FILE *stream, const char *path);
 void search_file(const char *file_full_path);

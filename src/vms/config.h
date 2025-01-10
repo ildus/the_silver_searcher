@@ -1,0 +1,3 @@
+#define HAVE_PTHREAD_H
+#define HAVE_GETLINE
+#define HAVE_REALPATH

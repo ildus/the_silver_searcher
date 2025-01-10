@@ -1,10 +1,11 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
-#include <getopt.h>
+#include <stddef.h>
 #include <sys/stat.h>
 
-#include <pcre.h>
+#include "dropt.h"
+#include "tre.h"
 
 #define DEFAULT_AFTER_LEN 2
 #define DEFAULT_BEFORE_LEN 2
@@ -27,68 +28,67 @@ enum path_print_behavior {
 };
 
 typedef struct {
-    int ackmate;
-    pcre *ackmate_dir_filter;
-    pcre_extra *ackmate_dir_filter_extra;
+    dropt_uintptr ackmate;
+    regex_t *ackmate_dir_filter;
     size_t after;
     size_t before;
     enum case_behavior casing;
     const char *file_search_string;
-    int match_files;
-    pcre *file_search_regex;
-    pcre_extra *file_search_regex_extra;
-    int color;
+    dropt_uintptr match_files;
+    regex_t *file_search_regex;
+    dropt_uintptr color;
     char *color_line_number;
     char *color_match;
     char *color_path;
-    int color_win_ansi;
-    int column;
-    int context;
-    int follow_symlinks;
-    int invert_match;
-    int literal;
-    int literal_starts_wordchar;
-    int literal_ends_wordchar;
+    dropt_uintptr color_win_ansi;
+    dropt_uintptr column;
+    size_t context;
+    dropt_uintptr follow_symlinks;
+    dropt_uintptr invert_match;
+    dropt_uintptr literal;
+    dropt_uintptr literal_starts_wordchar;
+    dropt_uintptr literal_ends_wordchar;
     size_t max_matches_per_file;
     int max_search_depth;
-    int mmap;
-    int multiline;
-    int one_dev;
-    int only_matching;
+    dropt_uintptr mmap;
+    dropt_uintptr multiline;
+    dropt_uintptr one_dev;
+    dropt_uintptr only_matching;
     char path_sep;
-    int path_to_ignore;
-    int print_break;
-    int print_count;
-    int print_filename_only;
-    int print_nonmatching_files;
-    int print_path;
-    int print_all_paths;
-    int print_line_numbers;
-    int print_long_lines; /* TODO: support this in print.c */
-    int passthrough;
-    pcre *re;
-    pcre_extra *re_extra;
-    int recurse_dirs;
-    int search_all_files;
-    int skip_vcs_ignores;
-    int search_binary_files;
-    int search_zip_files;
-    int search_hidden_files;
-    int search_stream; /* true if tail -F blah | ag */
-    int stats;
-    size_t stream_line_num; /* This should totally not be in here */
-    int match_found;        /* This should totally not be in here */
-    ino_t stdout_inode;
+    dropt_uintptr path_to_ignore;
+    dropt_uintptr print_break;
+    dropt_uintptr print_count;
+    dropt_uintptr print_filename_only;
+    dropt_uintptr print_nonmatching_files;
+    dropt_uintptr print_path;
+    dropt_uintptr print_all_paths;
+    dropt_uintptr print_line_numbers;
+    dropt_uintptr print_long_lines; /* TODO: support this in print.c */
+    dropt_uintptr passthrough;
+    regex_t *re;
+    dropt_uintptr recurse_dirs;
+    dropt_uintptr search_all_files;
+    dropt_uintptr skip_vcs_ignores;
+    dropt_uintptr search_binary_files;
+    dropt_uintptr search_zip_files;
+    dropt_uintptr search_hidden_files;
+    dropt_uintptr search_stream; /* true if tail -F blah | ag */
+    dropt_uintptr stats;
+    size_t stream_line_num;    /* This should totally not be in here */
+    dropt_uintptr match_found; /* This should totally not be in here */
     char *query;
-    int query_len;
+    dropt_uintptr query_len;
     char *pager;
-    int paths_len;
-    int parallel;
-    int use_thread_affinity;
-    int vimgrep;
+    dropt_uintptr paths_len;
+    dropt_uintptr parallel;
+    dropt_uintptr use_thread_affinity;
+    dropt_uintptr vimgrep;
     size_t width;
-    int word_regexp;
+    dropt_uintptr word_regexp;
     int workers;
+#ifdef __unix__
+    ino_t stdout_inode;
+#endif
 } cli_options;
 
 /* global options. parse_options gives it sane values, everything else reads from it */
@@ -96,7 +96,7 @@ extern cli_options opts;
 
 typedef struct option option_t;
 
-void usage(void);
+void usage(dropt_context *);
 void print_version(void);
 
 void init_options(void);

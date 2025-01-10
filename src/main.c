@@ -1,5 +1,4 @@
 #include <ctype.h>
-#include <pcre.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -37,7 +36,7 @@ int main(int argc, char **argv) {
     char **base_paths = NULL;
     char **paths = NULL;
     int i;
-    int pcre_opts = PCRE_MULTILINE;
+    int pcre_opts = REG_EXTENDED;
     int study_opts = 0;
     worker_t *workers = NULL;
     int workers_len;
@@ -57,19 +56,10 @@ int main(int argc, char **argv) {
     out_fd = stdout;
 
     parse_options(argc, argv, &base_paths, &paths);
-    log_debug("PCRE Version: %s", pcre_version());
     if (opts.stats) {
         memset(&stats, 0, sizeof(stats));
         gettimeofday(&(stats.time_start), NULL);
     }
-
-#ifdef USE_PCRE_JIT
-    int has_jit = 0;
-    pcre_config(PCRE_CONFIG_JIT, &has_jit);
-    if (has_jit) {
-        study_opts |= PCRE_STUDY_JIT_COMPILE;
-    }
-#endif
 
 #ifdef _WIN32
     {
@@ -131,7 +121,11 @@ int main(int argc, char **argv) {
         }
     } else {
         if (opts.casing == CASE_INSENSITIVE) {
-            pcre_opts |= PCRE_CASELESS;
+            pcre_opts |= REG_ICASE;
+        }
+        if (opts.multiline)
+        {
+            pcre_opts |= REG_NEWLINE;
         }
         if (opts.word_regexp) {
             char *word_regexp_query;
@@ -140,7 +134,7 @@ int main(int argc, char **argv) {
             opts.query = word_regexp_query;
             opts.query_len = strlen(opts.query);
         }
-        compile_study(&opts.re, &opts.re_extra, opts.query, pcre_opts, study_opts);
+        compile_study(&opts.re, opts.query, pcre_opts);
     }
 
     if (opts.search_stream) {
@@ -186,7 +180,7 @@ int main(int argc, char **argv) {
             symhash = NULL;
             ignores *ig = init_ignore(root_ignores, "", 0);
             struct stat s = { .st_dev = 0 };
-#ifndef _WIN32
+#if !(defined(_WIN32) || defined(__VMS))
             /* The device is ignored if opts.one_dev is false, so it's fine
              * to leave it at the default 0
              */
@@ -213,7 +207,7 @@ int main(int argc, char **argv) {
         double time_diff = ((long)stats.time_end.tv_sec * 1000000 + stats.time_end.tv_usec) -
                            ((long)stats.time_start.tv_sec * 1000000 + stats.time_start.tv_usec);
         time_diff /= 1000000;
-        printf("%zu matches\n%zu files contained matches\n%zu files searched\n%zu bytes searched\n%f seconds\n",
+        printf("%" SIZE_FMT " matches\n%" SIZE_FMT " files contained matches\n%" SIZE_FMT " files searched\n%" SIZE_FMT " bytes searched\n%f seconds\n",
                stats.total_matches, stats.total_file_matches, stats.total_files, stats.total_bytes, time_diff);
         pthread_mutex_destroy(&stats_mtx);
     }

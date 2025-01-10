@@ -1,0 +1,75 @@
+SED = sed ;
+VERSION = [ Command $(SED) -n "'s/[^[]*\[\([0-9]\+\.[0-9]\+\.[0-9]\+\)\],/\1/p'" configure.ac ] ;
+
+MAIN_SRCS =
+	decompress.c
+	ignore.c
+	lang.c
+	log.c
+	main.c
+	options.c
+	print.c
+	scandir.c
+	search.c
+    infnmatch.c
+	util.c ;
+
+OPT_SRCS =
+    dropt.c
+    dropt_handlers.c
+    dropt_string.c ;
+
+TRE_SRCS =
+	tre-ast.c
+	tre-compile.c
+	tre-match-backtrack.c
+	tre-match-parallel.c
+	tre-mem.c
+	tre-parse.c
+	tre-stack.c
+    tre-match-approx.c
+	regcomp.c
+	regexec.c
+	regerror.c ;
+
+
+PATHS = $(MAIN_SRCS:R=src) ;
+HDRS = src dropt/include tre/local_includes  ;
+DEFINES = PACKAGE_VERSION=\"\"0.1\"\" ;
+
+if $(VMS)
+{
+    PATHS = [.src]$(MAIN_SRCS) ;
+    OPT_PATHS = [.dropt.src]$(OPT_SRCS) ;
+    TRE_PATHS = [.tre.lib]$(TRE_SRCS) ;
+    HDRS = [.src.vms] [.src] [.dropt.include] [.tre.local_includes] ;
+}
+else if $(NT)
+{
+    TRE_PATHS = $(TRE_SRCS:R=tre\\lib) ;
+    OPT_PATHS = $(OPT_SRCS:R=dropt\\src) ;
+    HDRS += src/win32  ;
+}
+else
+{
+    CCFLAGS = -O0 -g3 ;
+    TRE_PATHS = $(TRE_SRCS:R=tre/lib) ;
+    OPT_PATHS = $(OPT_SRCS:R=dropt/src) ;
+    HDRS += src/unix  ;
+}
+
+OBJS = $(PATHS:S=$(SUFOBJ)) ;
+LINKLIBS on ag = -lz -lpthread  ;
+
+Library libdropt : $(OPT_PATHS) ;
+Library libtre : $(TRE_PATHS) ;
+Main ag : $(PATHS) ;
+LinkLibraries ag : libdropt libtre ;
+
+if $(VMS)
+{
+    LOCATE on libdropt = [.] ;
+    LOCATE on libtre = [.] ;
+}
+
+Clean clean : $(OBJS) ;

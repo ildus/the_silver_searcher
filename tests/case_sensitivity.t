@@ -32,11 +32,11 @@ Case sensitive mode:
 
 Case insensitive mode:
 
-  $ ag fOO -i sample
+  $ ag -i fOO sample
   1:Foo
-  $ ag fOO --ignore-case sample
+  $ ag --ignore-case fOO sample
   1:Foo
-  $ ag 'f.o' -i sample
+  $ ag -i 'f.o' sample
   1:Foo
 
 Case insensitive file regex

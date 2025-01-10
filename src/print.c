@@ -20,83 +20,72 @@ const char *color_reset = "\033[0m\033[K";
 
 const char *truncate_marker = " [...]";
 
-__thread struct print_context {
-    size_t line;
-    char **context_prev_lines;
-    size_t prev_line;
-    size_t last_prev_line;
-    size_t prev_line_offset;
-    size_t line_preceding_current_match_offset;
-    size_t lines_since_last_match;
-    size_t last_printed_match;
-    int in_a_match;
-    int printing_a_match;
-} print_context;
+print_context_t *print_init_context(void) {
+    print_context_t *ctx = ag_malloc(sizeof(print_context_t));
 
-void print_init_context(void) {
-    if (print_context.context_prev_lines != NULL) {
-        return;
-    }
-    print_context.context_prev_lines = ag_calloc(sizeof(char *), (opts.before + 1));
-    print_context.line = 1;
-    print_context.prev_line = 0;
-    print_context.last_prev_line = 0;
-    print_context.prev_line_offset = 0;
-    print_context.line_preceding_current_match_offset = 0;
-    print_context.lines_since_last_match = INT_MAX;
-    print_context.last_printed_match = 0;
-    print_context.in_a_match = FALSE;
-    print_context.printing_a_match = FALSE;
+    ctx->context_prev_lines = ag_calloc(sizeof(char *), (opts.before + 1));
+    ctx->line = 1;
+    ctx->prev_line = 0;
+    ctx->last_prev_line = 0;
+    ctx->prev_line_offset = 0;
+    ctx->line_preceding_current_match_offset = 0;
+    ctx->lines_since_last_match = INT_MAX;
+    ctx->last_printed_match = 0;
+    ctx->in_a_match = FALSE;
+    ctx->printing_a_match = FALSE;
+
+    return ctx;
 }
 
-void print_cleanup_context(void) {
+void print_cleanup_context(print_context_t *ctx) {
     size_t i;
 
-    if (print_context.context_prev_lines == NULL) {
+    if (!ctx || ctx->context_prev_lines == NULL) {
         return;
     }
 
     for (i = 0; i < opts.before; i++) {
-        if (print_context.context_prev_lines[i] != NULL) {
-            free(print_context.context_prev_lines[i]);
+        if (ctx->context_prev_lines[i] != NULL) {
+            free(ctx->context_prev_lines[i]);
         }
     }
-    free(print_context.context_prev_lines);
-    print_context.context_prev_lines = NULL;
+    free(ctx->context_prev_lines);
+    ctx->context_prev_lines = NULL;
+    free(ctx);
 }
 
-void print_context_append(const char *line, size_t len) {
+void print_context_append(print_context_t *ctx, const char *line, size_t len) {
     if (opts.before == 0) {
         return;
     }
-    if (print_context.context_prev_lines[print_context.last_prev_line] != NULL) {
-        free(print_context.context_prev_lines[print_context.last_prev_line]);
+    if (ctx->context_prev_lines[ctx->last_prev_line] != NULL) {
+        free(ctx->context_prev_lines[ctx->last_prev_line]);
     }
-    print_context.context_prev_lines[print_context.last_prev_line] = ag_strndup(line, len);
-    print_context.last_prev_line = (print_context.last_prev_line + 1) % opts.before;
+    ctx->context_prev_lines[ctx->last_prev_line] = ag_strndup(line, len);
+    ctx->last_prev_line = (ctx->last_prev_line + 1) % opts.before;
 }
 
-void print_trailing_context(const char *path, const char *buf, size_t n) {
+void print_trailing_context(print_context_t *ctx, const char *path, const char *buf, size_t n) {
     char sep = '-';
 
     if (opts.ackmate || opts.vimgrep) {
         sep = ':';
     }
 
-    if (print_context.lines_since_last_match != 0 &&
-        print_context.lines_since_last_match <= opts.after) {
+    if (ctx->lines_since_last_match != 0 &&
+        ctx->lines_since_last_match <= opts.after) {
         if (opts.print_path == PATH_PRINT_EACH_LINE) {
             print_path(path, ':');
         }
-        print_line_number(print_context.line, sep);
+        print_line_number(ctx->line, sep);
 
         fwrite(buf, 1, n, out_fd);
         fputc('\n', out_fd);
     }
 
-    print_context.line++;
-    if (!print_context.in_a_match && print_context.lines_since_last_match < INT_MAX) {
-        print_context.lines_since_last_match++;
+    ctx->line++;
+    if (!ctx->in_a_match && ctx->lines_since_last_match < INT_MAX) {
+        ctx->lines_since_last_match++;
     }
 }
 
@@ -145,7 +134,7 @@ void print_binary_file_matches(const char *path) {
     fprintf(out_fd, "Binary file %s matches.\n", path);
 }
 
-void print_file_matches(const char *path, const char *buf, const size_t buf_len, const match_t matches[], const size_t matches_len) {
+void print_file_matches(print_context_t *ctx, const char *path, const char *buf, const size_t buf_len, const match_t matches[], const size_t matches_len) {
     size_t cur_match = 0;
     ssize_t lines_to_print = 0;
     char sep = '-';
@@ -172,18 +161,18 @@ void print_file_matches(const char *path, const char *buf, const size_t buf_len,
         }
     }
 
-    for (i = 0; i <= buf_len && (cur_match < matches_len || print_context.lines_since_last_match <= opts.after); i++) {
+    for (i = 0; i <= buf_len && (cur_match < matches_len || ctx->lines_since_last_match <= opts.after); i++) {
         if (cur_match < matches_len && i == matches[cur_match].start) {
-            print_context.in_a_match = TRUE;
+            ctx->in_a_match = TRUE;
             /* We found the start of a match */
-            if (cur_match > 0 && blanks_between_matches && print_context.lines_since_last_match > (opts.before + opts.after + 1)) {
+            if (cur_match > 0 && blanks_between_matches && ctx->lines_since_last_match > (opts.before + opts.after + 1)) {
                 fprintf(out_fd, "--\n");
             }
 
-            if (print_context.lines_since_last_match > 0 && opts.before > 0) {
+            if (ctx->lines_since_last_match > 0 && opts.before > 0) {
                 /* TODO: better, but still needs work */
                 /* print the previous line(s) */
-                lines_to_print = print_context.lines_since_last_match - (opts.after + 1);
+                lines_to_print = ctx->lines_since_last_match - (opts.after + 1);
                 if (lines_to_print < 0) {
                     lines_to_print = 0;
                 } else if ((size_t)lines_to_print > opts.before) {
@@ -191,72 +180,72 @@ void print_file_matches(const char *path, const char *buf, const size_t buf_len,
                 }
 
                 for (j = (opts.before - lines_to_print); j < opts.before; j++) {
-                    print_context.prev_line = (print_context.last_prev_line + j) % opts.before;
-                    if (print_context.context_prev_lines[print_context.prev_line] != NULL) {
+                    ctx->prev_line = (ctx->last_prev_line + j) % opts.before;
+                    if (ctx->context_prev_lines[ctx->prev_line] != NULL) {
                         if (opts.print_path == PATH_PRINT_EACH_LINE) {
                             print_path(path, ':');
                         }
-                        print_line_number(print_context.line - (opts.before - j), sep);
-                        fprintf(out_fd, "%s\n", print_context.context_prev_lines[print_context.prev_line]);
+                        print_line_number(ctx->line - (opts.before - j), sep);
+                        fprintf(out_fd, "%s\n", ctx->context_prev_lines[ctx->prev_line]);
                     }
                 }
             }
-            print_context.lines_since_last_match = 0;
+            ctx->lines_since_last_match = 0;
         }
 
         if (cur_match < matches_len && i == matches[cur_match].end) {
             /* We found the end of a match. */
             cur_match++;
-            print_context.in_a_match = FALSE;
+            ctx->in_a_match = FALSE;
         }
 
         /* We found the end of a line. */
         if ((i == buf_len || buf[i] == '\n') && opts.before > 0) {
             /* We don't want to strcpy the \n */
-            print_context_append(&buf[print_context.prev_line_offset], i - print_context.prev_line_offset);
+            print_context_append(ctx, &buf[ctx->prev_line_offset], i - ctx->prev_line_offset);
         }
 
         if (i == buf_len || buf[i] == '\n') {
-            if (print_context.lines_since_last_match == 0) {
+            if (ctx->lines_since_last_match == 0) {
                 if (opts.print_path == PATH_PRINT_EACH_LINE && !opts.search_stream) {
                     print_path(path, ':');
                 }
                 if (opts.ackmate) {
                     /* print headers for ackmate to parse */
-                    print_line_number(print_context.line, ';');
-                    for (; print_context.last_printed_match < cur_match; print_context.last_printed_match++) {
-                        size_t start = matches[print_context.last_printed_match].start - print_context.line_preceding_current_match_offset;
+                    print_line_number(ctx->line, ';');
+                    for (; ctx->last_printed_match < cur_match; ctx->last_printed_match++) {
+                        size_t start = matches[ctx->last_printed_match].start - ctx->line_preceding_current_match_offset;
                         fprintf(out_fd, "%lu %lu",
                                 start,
-                                matches[print_context.last_printed_match].end - matches[print_context.last_printed_match].start);
-                        print_context.last_printed_match == cur_match - 1 ? fputc(':', out_fd) : fputc(',', out_fd);
+                                matches[ctx->last_printed_match].end - matches[ctx->last_printed_match].start);
+                        ctx->last_printed_match == cur_match - 1 ? fputc(':', out_fd) : fputc(',', out_fd);
                     }
-                    print_line(buf, i, print_context.prev_line_offset);
+                    print_line(buf, i, ctx->prev_line_offset);
                 } else if (opts.vimgrep) {
-                    for (; print_context.last_printed_match < cur_match; print_context.last_printed_match++) {
+                    for (; ctx->last_printed_match < cur_match; ctx->last_printed_match++) {
                         print_path(path, sep);
-                        print_line_number(print_context.line, sep);
-                        print_column_number(matches, print_context.last_printed_match, print_context.prev_line_offset, sep);
-                        print_line(buf, i, print_context.prev_line_offset);
+                        print_line_number(ctx->line, sep);
+                        print_column_number(matches, ctx->last_printed_match, ctx->prev_line_offset, sep);
+                        print_line(buf, i, ctx->prev_line_offset);
                     }
                 } else {
-                    print_line_number(print_context.line, ':');
+                    print_line_number(ctx->line, ':');
                     int printed_match = FALSE;
                     if (opts.column) {
-                        print_column_number(matches, print_context.last_printed_match, print_context.prev_line_offset, ':');
+                        print_column_number(matches, ctx->last_printed_match, ctx->prev_line_offset, ':');
                     }
 
-                    if (print_context.printing_a_match && opts.color) {
+                    if (ctx->printing_a_match && opts.color) {
                         fprintf(out_fd, "%s", opts.color_match);
                     }
-                    for (j = print_context.prev_line_offset; j <= i; j++) {
+                    for (j = ctx->prev_line_offset; j <= i; j++) {
                         /* close highlight of match term */
-                        if (print_context.last_printed_match < matches_len && j == matches[print_context.last_printed_match].end) {
+                        if (ctx->last_printed_match < matches_len && j == matches[ctx->last_printed_match].end) {
                             if (opts.color) {
                                 fprintf(out_fd, "%s", color_reset);
                             }
-                            print_context.printing_a_match = FALSE;
-                            print_context.last_printed_match++;
+                            ctx->printing_a_match = FALSE;
+                            ctx->last_printed_match++;
                             printed_match = TRUE;
                             if (opts.only_matching) {
                                 fputc('\n', out_fd);
@@ -264,7 +253,7 @@ void print_file_matches(const char *path, const char *buf, const size_t buf_len,
                         }
                         /* skip remaining characters if truncation width exceeded, needs to be done
                          * before highlight opening */
-                        if (j < buf_len && opts.width > 0 && j - print_context.prev_line_offset >= opts.width) {
+                        if (j < buf_len && opts.width > 0 && j - ctx->prev_line_offset >= opts.width) {
                             if (j < i) {
                                 fputs(truncate_marker, out_fd);
                             }
@@ -272,51 +261,51 @@ void print_file_matches(const char *path, const char *buf, const size_t buf_len,
 
                             /* prevent any more characters or highlights */
                             j = i;
-                            print_context.last_printed_match = matches_len;
+                            ctx->last_printed_match = matches_len;
                         }
                         /* open highlight of match term */
-                        if (print_context.last_printed_match < matches_len && j == matches[print_context.last_printed_match].start) {
+                        if (ctx->last_printed_match < matches_len && j == matches[ctx->last_printed_match].start) {
                             if (opts.only_matching && printed_match) {
                                 if (opts.print_path == PATH_PRINT_EACH_LINE) {
                                     print_path(path, ':');
                                 }
-                                print_line_number(print_context.line, ':');
+                                print_line_number(ctx->line, ':');
                                 if (opts.column) {
-                                    print_column_number(matches, print_context.last_printed_match, print_context.prev_line_offset, ':');
+                                    print_column_number(matches, ctx->last_printed_match, ctx->prev_line_offset, ':');
                                 }
                             }
                             if (opts.color) {
                                 fprintf(out_fd, "%s", opts.color_match);
                             }
-                            print_context.printing_a_match = TRUE;
+                            ctx->printing_a_match = TRUE;
                         }
                         /* Don't print the null terminator */
                         if (j < buf_len) {
                             /* if only_matching is set, print only matches and newlines */
-                            if (!opts.only_matching || print_context.printing_a_match) {
-                                if (opts.width == 0 || j - print_context.prev_line_offset < opts.width) {
+                            if (!opts.only_matching || ctx->printing_a_match) {
+                                if (opts.width == 0 || j - ctx->prev_line_offset < opts.width) {
                                     fputc(buf[j], out_fd);
                                 }
                             }
                         }
                     }
-                    if (print_context.printing_a_match && opts.color) {
+                    if (ctx->printing_a_match && opts.color) {
                         fprintf(out_fd, "%s", color_reset);
                     }
                 }
             }
 
             if (opts.search_stream) {
-                print_context.last_printed_match = 0;
+                ctx->last_printed_match = 0;
                 break;
             }
 
             /* print context after matching line */
-            print_trailing_context(path, &buf[print_context.prev_line_offset], i - print_context.prev_line_offset);
+            print_trailing_context(ctx, path, &buf[ctx->prev_line_offset], i - ctx->prev_line_offset);
 
-            print_context.prev_line_offset = i + 1; /* skip the newline */
-            if (!print_context.in_a_match) {
-                print_context.line_preceding_current_match_offset = i + 1;
+            ctx->prev_line_offset = i + 1; /* skip the newline */
+            if (!ctx->in_a_match) {
+                ctx->line_preceding_current_match_offset = i + 1;
             }
 
             /* File doesn't end with a newline. Print one so the output is pretty. */
@@ -325,10 +314,12 @@ void print_file_matches(const char *path, const char *buf, const size_t buf_len,
             }
         }
     }
+#ifdef __unix__
     /* Flush output if stdout is not a tty */
     if (opts.stdout_inode) {
         fflush(out_fd);
     }
+#endif
 }
 
 void print_line_number(size_t line, const char sep) {

@@ -2,7 +2,7 @@
 #define UTIL_H
 
 #include <dirent.h>
-#include <pcre.h>
+#include <inregexp.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -20,6 +20,12 @@ extern FILE *out_fd;
 
 #ifndef FALSE
 #define FALSE 0
+#endif
+
+#ifdef __VMS
+#define SIZE_FMT "lu"
+#else
+#define SIZE_FMT "zu"
 #endif
 
 #define H_SIZE (64 * 1024)
@@ -77,7 +83,7 @@ const char *hash_strnstr(const char *s, const char *find, const size_t s_len, co
 
 size_t invert_matches(const char *buf, const size_t buf_len, match_t matches[], size_t matches_len);
 void realloc_matches(match_t **matches, size_t *matches_size, size_t matches_len);
-void compile_study(pcre **re, pcre_extra **re_extra, char *q, const int pcre_opts, const int study_opts);
+void compile_study(regex_t **re, char *q, const int pcre_opts);
 
 
 int is_binary(const void *buf, const size_t buf_len);
@@ -98,7 +104,7 @@ void die(const char *fmt, ...);
 
 void ag_asprintf(char **ret, const char *fmt, ...);
 
-ssize_t buf_getline(const char **line, const char *buf, const size_t buf_len, const size_t buf_offset);
+ssize_t buf_getline(char **line, char *buf, const size_t buf_len, const size_t buf_offset);
 
 #ifndef HAVE_FGETLN
 char *fgetln(FILE *fp, size_t *lenp);

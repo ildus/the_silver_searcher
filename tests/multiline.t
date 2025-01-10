@@ -19,5 +19,5 @@ No multiline:
 
 Multiline explicit:
 
-  $ ag '^wh[^w\n]+er$' .
+  $ ag '^wh[^\w\n]+er$' .
   blah.txt:3:whatever

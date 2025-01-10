@@ -1,6 +1,12 @@
 *.dSYM
 *.gcda
+*.a
 *.o
+*.lo
+*.o.d
+*.lo.d
+.libs
+*.la
 *.plist
 .deps
 .dirstamp
@@ -30,3 +36,7 @@ tests/*.err
 tests/big/*.err
 tests/big/big_file.txt
 the_silver_searcher.spec
+.ninja_log
+.ninja_deps
+build.ninja
+compile_options.json

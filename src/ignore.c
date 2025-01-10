@@ -14,9 +14,9 @@
 
 #ifdef _WIN32
 #include <shlwapi.h>
-#define fnmatch(x, y, z) (!PathMatchSpec(y, x))
+#define ag_fnmatch(x, y, z) (!PathMatchSpec(y, x))
 #else
-#include <fnmatch.h>
+#include <infnmatch.h>
 const int fnmatch_flags = FNM_PATHNAME;
 #endif
 
@@ -41,7 +41,7 @@ const char *ignore_pattern_files[] = {
 
 int is_empty(ignores *ig) {
     return (ig->extensions_len + ig->names_len + ig->slash_names_len + ig->regexes_len + ig->slash_regexes_len == 0);
-};
+}
 
 ignores *init_ignore(ignores *parent, const char *dirname, const size_t dirname_len) {
     ignores *ig = ag_malloc(sizeof(ignores));
@@ -198,11 +198,13 @@ void load_ignore_patterns(ignores *ig, const char *path) {
 }
 
 static int ackmate_dir_match(const char *dir_name) {
+    regmatch_t pmatch[1];
     if (opts.ackmate_dir_filter == NULL) {
         return 0;
     }
+
     /* we just care about the match, not where the matches are */
-    return pcre_exec(opts.ackmate_dir_filter, NULL, dir_name, strlen(dir_name), 0, 0, NULL, 0);
+    return tre_regnexec(opts.ackmate_dir_filter, dir_name, strlen(dir_name), 1, pmatch, 0);
 }
 
 /* This is the hottest code in Ag. 10-15% of all execution time is spent here */
@@ -256,7 +258,7 @@ static int path_ignore_search(const ignores *ig, const char *path, const char *f
         }
 
         for (i = 0; i < ig->slash_regexes_len; i++) {
-            if (fnmatch(ig->slash_regexes[i], slash_filename, fnmatch_flags) == 0) {
+            if (ag_fnmatch(ig->slash_regexes[i], slash_filename, fnmatch_flags) == 0) {
                 log_debug("file %s ignored because name matches slash regex pattern %s", slash_filename, ig->slash_regexes[i]);
                 free(temp);
                 return 1;
@@ -266,7 +268,7 @@ static int path_ignore_search(const ignores *ig, const char *path, const char *f
     }
 
     for (i = 0; i < ig->invert_regexes_len; i++) {
-        if (fnmatch(ig->invert_regexes[i], filename, fnmatch_flags) == 0) {
+        if (ag_fnmatch(ig->invert_regexes[i], filename, fnmatch_flags) == 0) {
             log_debug("file %s not ignored because name matches regex pattern !%s", filename, ig->invert_regexes[i]);
             free(temp);
             return 0;
@@ -275,7 +277,7 @@ static int path_ignore_search(const ignores *ig, const char *path, const char *f
     }
 
     for (i = 0; i < ig->regexes_len; i++) {
-        if (fnmatch(ig->regexes[i], filename, fnmatch_flags) == 0) {
+        if (ag_fnmatch(ig->regexes[i], filename, fnmatch_flags) == 0) {
             log_debug("file %s ignored because name matches regex pattern %s", filename, ig->regexes[i]);
             free(temp);
             return 1;

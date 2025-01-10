@@ -313,19 +313,13 @@ void realloc_matches(match_t **matches, size_t *matches_size, size_t matches_len
     *matches = ag_realloc(*matches, *matches_size * sizeof(match_t));
 }
 
-void compile_study(pcre **re, pcre_extra **re_extra, char *q, const int pcre_opts, const int study_opts) {
-    const char *pcre_err = NULL;
-    int pcre_err_offset = 0;
+void compile_study(regex_t **re, char *q, int pcre_opts) {
+    int err;
 
-    *re = pcre_compile(q, pcre_opts, &pcre_err, &pcre_err_offset, NULL);
-    if (*re == NULL) {
-        die("Bad regex! pcre_compile() failed at position %i: %s\nIf you meant to search for a literal string, run ag with -Q",
-            pcre_err_offset,
-            pcre_err);
-    }
-    *re_extra = pcre_study(*re, study_opts, &pcre_err);
-    if (*re_extra == NULL) {
-        log_debug("pcre_study returned nothing useful. Error: %s", pcre_err);
+    *re = ag_malloc(sizeof(regex_t));
+    err = tre_regcomp(*re, q, pcre_opts);
+    if (err) {
+        die("Bad regex! regcomp() failed");
     }
 }
 
@@ -623,8 +617,8 @@ ssize_t getline(char **lineptr, size_t *n, FILE *stream) {
 }
 #endif
 
-ssize_t buf_getline(const char **line, const char *buf, const size_t buf_len, const size_t buf_offset) {
-    const char *cur = buf + buf_offset;
+ssize_t buf_getline(char **line, char *buf, const size_t buf_len, const size_t buf_offset) {
+    char *cur = buf + buf_offset;
     ssize_t i;
     for (i = 0; (buf_offset + i < buf_len) && cur[i] != '\n'; i++) {
     }
@@ -689,7 +683,7 @@ int vasprintf(char **ret, const char *fmt, va_list args) {
 #ifdef __va_copy
     /* non-standard macro, but usually exists */
     __va_copy(args2, args);
-#elif va_copy
+#elif defined(va_copy)  || defined(__VMS)
     /* C99 macro. We compile with -std=c89 but you never know */
     va_copy(args2, args);
 #else
