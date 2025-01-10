@@ -2,14 +2,13 @@
 
 A code searching tool similar to `ack`, with a focus on speed.
 
-[![Build Status](https://travis-ci.org/ggreer/the_silver_searcher.svg?branch=master)](https://travis-ci.org/ggreer/the_silver_searcher)
+This fork is in work-in-progress state.
 
-[![Floobits Status](https://floobits.com/ggreer/ag.svg)](https://floobits.com/ggreer/ag/redirect)
+The basic goal of this fork is to make Ag more autonoums, so for regex it's using TRE,
+and for options - dropt library. This allows compilation of Ag on OpenVMS.
 
-[![#ag on Freenode](https://img.shields.io/badge/Freenode-%23ag-brightgreen.svg)](https://webchat.freenode.net/?channels=ag)
-
-Do you know C? Want to improve ag? [I invite you to pair with me](http://geoff.greer.fm/2014/10/13/help-me-get-to-ag-10/).
-
+The original compilation is broken right now. For Linux it can be compiled with using
+`jamp` tool from my repos.
 
 ## What's so great about Ag?
 
@@ -18,117 +17,12 @@ Do you know C? Want to improve ag? [I invite you to pair with me](http://geoff.g
 * If there are files in your source repo you don't want to search, just add their patterns to a `.ignore` file. (\*cough\* `*.min.js` \*cough\*)
 * The command name is 33% shorter than `ack`, and all keys are on the home row!
 
-Ag is quite stable now. Most changes are new features, minor bug fixes, or performance improvements. It's much faster than Ack in my benchmarks:
-
-    ack test_blah ~/code/  104.66s user 4.82s system 99% cpu 1:50.03 total
-
-    ag test_blah ~/code/  4.67s user 4.58s system 286% cpu 3.227 total
-
-Ack and Ag found the same results, but Ag was 34x faster (3.2 seconds vs 110 seconds). My `~/code` directory is about 8GB. Thanks to git/hg/ignore, Ag only searched 700MB of that.
-
-There are also [graphs of performance across releases](http://geoff.greer.fm/ag/speed/).
-
 ## How is it so fast?
 
 * Ag uses [Pthreads](https://en.wikipedia.org/wiki/POSIX_Threads) to take advantage of multiple CPU cores and search files in parallel.
 * Files are `mmap()`ed instead of read into a buffer.
 * Literal string searching uses [Boyer-Moore strstr](https://en.wikipedia.org/wiki/Boyer%E2%80%93Moore_string_search_algorithm).
-* Regex searching uses [PCRE's JIT compiler](http://sljit.sourceforge.net/pcre.html) (if Ag is built with PCRE >=8.21).
-* Ag calls `pcre_study()` before executing the same regex on every file.
 * Instead of calling `fnmatch()` on every pattern in your ignore files, non-regex patterns are loaded into arrays and binary searched.
-
-I've written several blog posts showing how I've improved performance. These include how I [added pthreads](http://geoff.greer.fm/2012/09/07/the-silver-searcher-adding-pthreads/), [wrote my own `scandir()`](http://geoff.greer.fm/2012/09/03/profiling-ag-writing-my-own-scandir/), [benchmarked every revision to find performance regressions](http://geoff.greer.fm/2012/08/25/the-silver-searcher-benchmarking-revisions/), and profiled with [gprof](http://geoff.greer.fm/2012/02/08/profiling-with-gprof/) and [Valgrind](http://geoff.greer.fm/2012/01/23/making-programs-faster-profiling/).
-
-
-## Installing
-
-### macOS
-
-    brew install the_silver_searcher
-
-or
-
-    port install the_silver_searcher
-
-
-### Linux
-
-* Ubuntu >= 13.10 (Saucy) or Debian >= 8 (Jessie)
-
-        apt-get install silversearcher-ag
-* Fedora 21 and lower
-
-        yum install the_silver_searcher
-* Fedora 22+
-
-        dnf install the_silver_searcher
-* RHEL7+
-
-        yum install epel-release.noarch the_silver_searcher
-* Gentoo
-
-        emerge -a sys-apps/the_silver_searcher
-* Arch
-
-        pacman -S the_silver_searcher
-
-* Slackware
-
-        sbopkg -i the_silver_searcher
-
-* openSUSE
-
-        zypper install the_silver_searcher
-
-* CentOS
-
-        yum install the_silver_searcher
-
-* NixOS/Nix/Nixpkgs
-
-        nix-env -iA silver-searcher
-
-* SUSE Linux Enterprise: Follow [these simple instructions](https://software.opensuse.org/download.html?project=utilities&package=the_silver_searcher).
-
-
-### BSD
-
-* FreeBSD
-
-        pkg install the_silver_searcher
-* OpenBSD/NetBSD
-
-        pkg_add the_silver_searcher
-
-### Windows
-
-* Win32/64
-
-  Unofficial daily builds are [available](https://github.com/k-takata/the_silver_searcher-win32).
-  
-* winget
-
-        winget install "The Silver Searcher"
-  
-  Notes:
-  - This installs a [release](https://github.com/JFLarvoire/the_silver_searcher/releases) of ag.exe optimized for Windows.
-  - winget is intended to become the default package manager client for Windows.  
-    As of June 2020, it's still in beta, and can be installed using instructions [there](https://github.com/microsoft/winget-cli).
-  - The setup script in the Ag's winget package installs ag.exe in the first directory that matches one of these criteria:
-     1. Over a previous instance of ag.exe *from the same [origin](https://github.com/JFLarvoire/the_silver_searcher)* found in the PATH
-     2. In the directory defined in environment variable bindir_%PROCESSOR_ARCHITECTURE%
-     3. In the directory defined in environment variable bindir
-     4. In the directory defined in environment variable windir
-  
-* Chocolatey
-
-        choco install ag
-* MSYS2
-
-        pacman -S mingw-w64-{i686,x86_64}-ag
-* Cygwin
-
-  Run the relevant [`setup-*.exe`](https://cygwin.com/install.html), and select "the\_silver\_searcher" in the "Utils" category.
 
 ## Building from source
 
@@ -137,25 +31,26 @@ or
 1. Install dependencies (Automake, pkg-config, PCRE, LZMA):
     * macOS:
 
-            brew install automake pkg-config pcre xz
+            brew install automake pkg-config xz
         or
 
-            port install automake pkgconfig pcre xz
+            port install automake pkgconfig xz
     * Ubuntu/Debian:
 
-            apt-get install -y automake pkg-config libpcre3-dev zlib1g-dev liblzma-dev
+            apt-get install -y automake pkg-config zlib1g-dev liblzma-dev
     * Fedora:
 
-            yum -y install pkgconfig automake gcc zlib-devel pcre-devel xz-devel
+            yum -y install pkgconfig automake gcc zlib-devel xz-devel
     * CentOS:
 
             yum -y groupinstall "Development Tools"
-            yum -y install pcre-devel xz-devel zlib-devel
+            yum -y install xz-devel zlib-devel
     * openSUSE:
 
             zypper source-install --build-deps-only the_silver_searcher
 
     * Windows: It's complicated. See [this wiki page](https://github.com/ggreer/the_silver_searcher/wiki/Windows).
+
 2. Run the build script (which just runs aclocal, automake, etc):
 
         ./build.sh
